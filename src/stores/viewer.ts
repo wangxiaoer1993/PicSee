@@ -5,6 +5,7 @@ export type DisplayMode = 'fit-window' | 'fit-width' | 'actual-size' | 'custom'
 
 const MIN_ZOOM = 0.01
 const MAX_ZOOM = 32
+const MIN_VISIBLE_PIXELS = 64
 
 export const useViewerStore = defineStore('viewer', () => {
   const zoom = shallowRef(1)
@@ -14,6 +15,7 @@ export const useViewerStore = defineStore('viewer', () => {
   const isDragging = shallowRef(false)
   const viewport = reactive({ width: 0, height: 0 })
   const image = reactive({ width: 0, height: 0 })
+  const preservedCenter = shallowRef<{ x: number; y: number } | null>(null)
   const canPan = computed(() =>
     image.width * zoom.value > viewport.width || image.height * zoom.value > viewport.height,
   )
@@ -21,14 +23,22 @@ export const useViewerStore = defineStore('viewer', () => {
   function setViewport(width: number, height: number) {
     viewport.width = width
     viewport.height = height
+    clampOffset()
   }
 
   function setImageSize(width: number, height: number) {
     image.width = width
     image.height = height
+    if (width && height && preservedCenter.value) {
+      offset.x = viewport.width / 2 - preservedCenter.value.x * width * zoom.value
+      offset.y = viewport.height / 2 - preservedCenter.value.y * height * zoom.value
+      preservedCenter.value = null
+      clampOffset()
+    }
   }
 
   function applyDisplayMode(mode: Exclude<DisplayMode, 'custom'>) {
+    preservedCenter.value = null
     displayMode.value = mode
     if (!image.width || !image.height || !viewport.width || !viewport.height) return
     const availableWidth = Math.max(viewport.width - 32, 1)
@@ -43,6 +53,7 @@ export const useViewerStore = defineStore('viewer', () => {
   }
 
   function resetView(mode: Exclude<DisplayMode, 'custom'> = 'fit-window') {
+    preservedCenter.value = null
     offset.x = 0
     offset.y = 0
     applyDisplayMode(mode)
@@ -50,7 +61,9 @@ export const useViewerStore = defineStore('viewer', () => {
 
   function centerImage() {
     offset.x = (viewport.width - image.width * zoom.value) / 2
-    offset.y = (viewport.height - image.height * zoom.value) / 2
+    offset.y = displayMode.value === 'fit-width'
+      ? Math.max(0, (viewport.height - image.height * zoom.value) / 2)
+      : (viewport.height - image.height * zoom.value) / 2
   }
 
   function setZoom(nextZoom: number, point?: { x: number; y: number }) {
@@ -60,7 +73,8 @@ export const useViewerStore = defineStore('viewer', () => {
     offset.x = anchor.x - (anchor.x - offset.x) * ratio
     offset.y = anchor.y - (anchor.y - offset.y) * ratio
     zoom.value = clamped
-    displayMode.value = Math.abs(clamped - 1) < 0.0001 ? 'actual-size' : 'custom'
+    displayMode.value = 'custom'
+    clampOffset()
   }
 
   function zoomIn(step = 0.1, point?: { x: number; y: number }) {
@@ -76,11 +90,24 @@ export const useViewerStore = defineStore('viewer', () => {
     offset.x += x
     offset.y += y
     displayMode.value = 'custom'
+    clampOffset()
   }
 
-  /** 切图时保留当前 zoom 与 offset，避免图片加载后重新套用适配模式。 */
+  /** 切图时按视口中心在旧图中的相对位置映射到新图。 */
   function preserveView() {
+    if (image.width && image.height && zoom.value) {
+      preservedCenter.value = {
+        x: clampUnit((viewport.width / 2 - offset.x) / (image.width * zoom.value)),
+        y: clampUnit((viewport.height / 2 - offset.y) / (image.height * zoom.value)),
+      }
+    }
     displayMode.value = 'custom'
+  }
+
+  function clampOffset() {
+    if (!image.width || !image.height || !viewport.width || !viewport.height) return
+    offset.x = clampAxis(offset.x, image.width * zoom.value, viewport.width)
+    offset.y = clampAxis(offset.y, image.height * zoom.value, viewport.height)
   }
 
   function setDragging(value: boolean) {
@@ -116,4 +143,14 @@ export const useViewerStore = defineStore('viewer', () => {
 
 function clampZoom(zoom: number) {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
+}
+
+function clampAxis(offset: number, contentSize: number, viewportSize: number) {
+  if (contentSize <= viewportSize) return (viewportSize - contentSize) / 2
+  const visible = Math.min(MIN_VISIBLE_PIXELS, viewportSize / 2)
+  return Math.min(viewportSize - visible, Math.max(visible - contentSize, offset))
+}
+
+function clampUnit(value: number) {
+  return Math.min(1, Math.max(0, value))
 }

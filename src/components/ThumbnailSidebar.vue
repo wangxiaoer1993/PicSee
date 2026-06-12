@@ -21,18 +21,19 @@ function thumbnailSrc(path: string) {
   <aside class="thumbnail-sidebar">
     <div class="thumbnail-sidebar__heading" :title="directoryStore.currentPath ?? undefined">{{ directoryName }}</div>
     <a-empty v-if="!directoryStore.entries.length" :description="t('placeholder.directoryEmpty')" />
-    <button
-      v-for="(entry, index) in directoryStore.entries"
-      v-else
-      :key="entry.path"
-      class="thumbnail-sidebar__item"
-      :class="{ 'thumbnail-sidebar__item--active': index === directoryStore.currentIndex }"
-      :title="entry.path"
-      @click="directoryStore.select(index)"
-    >
-      <img :src="thumbnailSrc(entry.path)" alt="" loading="lazy">
-      <span>{{ entry.name }}</span>
-    </button>
+    <template v-else>
+      <button
+        v-for="(entry, index) in directoryStore.entries"
+        :key="entry.path"
+        class="thumbnail-sidebar__item"
+        :class="{ 'thumbnail-sidebar__item--active': index === directoryStore.currentIndex }"
+        :title="entry.path"
+        @click="directoryStore.select(index)"
+      >
+        <img :src="thumbnailSrc(entry.path)" alt="" decoding="async" loading="lazy">
+        <span>{{ entry.name }}</span>
+      </button>
+    </template>
   </aside>
 </template>
 

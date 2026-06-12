@@ -9,7 +9,6 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 
 const IMAGE_EXTENSIONS: [&str; 7] = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "svg"];
-const DIALOG_IMAGE_EXTENSIONS: [&str; 7] = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "svg"];
 
 /// 图片文件信息。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -42,7 +41,7 @@ pub async fn open_image_file(app: AppHandle) -> Result<Option<ImageEntry>, Strin
         let selected = app
             .dialog()
             .file()
-            .add_filter("图片", &DIALOG_IMAGE_EXTENSIONS)
+            .add_filter("图片", &IMAGE_EXTENSIONS)
             .blocking_pick_file();
         let Some(selected) = selected else {
             return Ok(None);
@@ -86,7 +85,7 @@ pub async fn open_directory(app: AppHandle) -> Result<Option<DirectoryScan>, Str
     .map_err(|error| format!("打开目录任务失败: {error}"))?
 }
 
-/// 授权并扫描调用方指定的目录。
+/// 扫描已由系统对话框授权的目录。
 #[tauri::command]
 pub async fn scan_directory(app: AppHandle, path: String) -> Result<Vec<ImageEntry>, String> {
     let directory = PathBuf::from(path);
@@ -151,23 +150,31 @@ pub fn scan_directory_entries(directory: &Path) -> Result<DirectoryScan, String>
         return Err(format!("路径不是目录: {}", directory.display()));
     }
 
-    let mut entries = Vec::new();
     let directory_entries = fs::read_dir(directory)
         .map_err(|error| format!("读取目录 {} 失败: {error}", directory.display()))?;
-    for entry in directory_entries {
-        let entry =
-            entry.map_err(|error| format!("读取目录项 {} 失败: {error}", directory.display()))?;
-        let path = entry.path();
-        if path.is_file() && is_supported_image(&path) {
-            entries.push(image_entry(&path)?);
-        }
-    }
-    entries.sort_by(|left, right| natural_compare(&left.name, &right.name));
+    let paths = directory_entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path());
+    let entries = collect_image_entries(paths)?;
 
     Ok(DirectoryScan {
         directory: directory.to_string_lossy().into_owned(),
         entries,
     })
+}
+
+/// 将支持的图片路径转换为条目；单个文件读取失败时跳过。
+pub fn collect_image_entries<I>(paths: I) -> Result<Vec<ImageEntry>, String>
+where
+    I: IntoIterator<Item = PathBuf>,
+{
+    let mut entries: Vec<ImageEntry> = paths
+        .into_iter()
+        .filter(|path| is_supported_image(path))
+        .filter_map(|path| image_entry(&path).ok())
+        .collect();
+    entries.sort_by(|left, right| natural_compare(&left.name, &right.name));
+    Ok(entries)
 }
 
 /// M2 保持静态 scope 为空，仅在运行时授权目录当前层级。
@@ -180,6 +187,9 @@ fn allow_directory(app: &AppHandle, directory: &Path) -> Result<(), String> {
 fn image_entry(path: &Path) -> Result<ImageEntry, String> {
     let metadata = fs::metadata(path)
         .map_err(|error| format!("读取图片信息 {} 失败: {error}", path.display()))?;
+    if !metadata.is_file() {
+        return Err(format!("图片路径不是文件: {}", path.display()));
+    }
     let modified = metadata
         .modified()
         .map_err(|error| format!("读取图片修改时间 {} 失败: {error}", path.display()))?

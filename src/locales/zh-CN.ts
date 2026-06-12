@@ -12,6 +12,7 @@ export default {
     imageError: '图片加载失败。',
   },
   status: { fileName: '文件名', index: '序号', resolution: '分辨率', zoom: '缩放比', fileSize: '文件大小' },
+  directory: { openFailed: '打开或扫描图片目录失败' },
   settings: {
     title: '设置',
     saved: '设置已保存',

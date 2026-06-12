@@ -31,8 +31,10 @@ function updateViewport() {
 
 function handleLoad(event: Event) {
   const image = event.currentTarget as HTMLImageElement
-  imageStore.markLoaded(image.naturalWidth, image.naturalHeight)
-  viewerStore.setImageSize(image.naturalWidth, image.naturalHeight)
+  const width = image.naturalWidth || Math.max(viewerStore.viewport.width * 0.8, 1)
+  const height = image.naturalHeight || Math.max(viewerStore.viewport.height * 0.8, 1)
+  imageStore.markLoaded(width, height)
+  viewerStore.setImageSize(width, height)
   if (viewerStore.displayMode === 'custom') return
   viewerStore.applyDisplayMode(viewerStore.displayMode)
 }
@@ -42,14 +44,14 @@ function handleError() {
 }
 
 function handleWheel(event: WheelEvent) {
-  if (!imageStore.hasImage) return
+  if (!imageStore.hasImage || event.deltaY === 0) return
   event.preventDefault()
   const rect = viewer.value?.getBoundingClientRect()
   const point = settingsStore.settings.viewer.zoomToCursor && rect
     ? { x: event.clientX - rect.left, y: event.clientY - rect.top }
     : undefined
-  if (event.deltaY < 0) viewerStore.zoomIn(settingsStore.settings.viewer.zoomStep, point)
-  else viewerStore.zoomOut(settingsStore.settings.viewer.zoomStep, point)
+  const sensitivity = event.ctrlKey ? 0.02 : 0.002
+  viewerStore.setZoom(viewerStore.zoom * Math.exp(-event.deltaY * sensitivity), point)
 }
 
 function handlePointerDown(event: PointerEvent) {

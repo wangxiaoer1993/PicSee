@@ -12,6 +12,7 @@ export default {
     imageError: 'The image could not be loaded.',
   },
   status: { fileName: 'File', index: 'Index', resolution: 'Resolution', zoom: 'Zoom', fileSize: 'File size' },
+  directory: { openFailed: 'Could not open or scan the image folder' },
   settings: {
     title: 'Settings',
     saved: 'Settings saved',

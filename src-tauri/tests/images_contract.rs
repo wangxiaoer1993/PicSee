@@ -1,4 +1,6 @@
-use picsee_lib::images::{is_supported_image, natural_compare, scan_directory_entries};
+use picsee_lib::images::{
+    collect_image_entries, is_supported_image, natural_compare, scan_directory_entries,
+};
 use std::{
     cmp::Ordering,
     fs,
@@ -66,6 +68,21 @@ fn scan_directory_returns_image_metadata_in_natural_order() {
     assert!(entry["size"].is_number());
     assert!(entry["modified"].is_number());
 
+    fs::remove_dir_all(directory).expect("应清理测试目录");
+}
+
+#[test]
+fn scan_skips_an_image_that_disappears_during_metadata_read() {
+    let directory = test_directory("skip-failed-entry");
+    fs::create_dir_all(&directory).expect("应创建测试目录");
+    let valid = directory.join("valid.png");
+    let disappeared = directory.join("disappeared.png");
+    fs::write(&valid, b"valid").expect("应写入有效图片");
+
+    let entries = collect_image_entries(vec![disappeared, valid]).expect("单文件失败不应中断扫描");
+
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].name, "valid.png");
     fs::remove_dir_all(directory).expect("应清理测试目录");
 }
 

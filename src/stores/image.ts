@@ -2,6 +2,7 @@ import { computed, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import { convertFileSrc } from '@tauri-apps/api/core'
 
+import { useViewerStore } from '@/stores/viewer'
 import type { ImageEntry } from '@/types/image'
 
 export const useImageStore = defineStore('image', () => {
@@ -16,6 +17,7 @@ export const useImageStore = defineStore('image', () => {
 
   /** 设置当前图片资源，并等待 img 元素报告真实解码尺寸。 */
   function setCurrent(entry: ImageEntry | null) {
+    useViewerStore().setImageSize(0, 0)
     metadata.value = entry
     src.value = entry ? convertFileSrc(entry.path) : ''
     loading.value = Boolean(entry)

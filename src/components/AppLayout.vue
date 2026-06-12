@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { message } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { useI18n } from 'vue-i18n'
 
 import ImageCanvasViewer from './ImageCanvasViewer.vue'
 import SettingsModal from './SettingsModal.vue'
@@ -15,11 +17,13 @@ import { useSettingsStore } from '@/stores/settings'
 import { useViewerStore } from '@/stores/viewer'
 
 const appStore = useAppStore()
+const { t } = useI18n()
 const directoryStore = useDirectoryStore()
 const imageStore = useImageStore()
 const settingsStore = useSettingsStore()
 const viewerStore = useViewerStore()
 const { currentEntry } = storeToRefs(directoryStore)
+const { error: directoryError } = storeToRefs(directoryStore)
 const { settings } = storeToRefs(settingsStore)
 
 const layoutClasses = computed(() => ({
@@ -28,7 +32,6 @@ const layoutClasses = computed(() => ({
 }))
 
 watch(() => currentEntry.value?.path, (path, previousPath) => {
-  imageStore.setCurrent(currentEntry.value)
   if (path !== previousPath && path) {
     const mode = settings.value.viewer.defaultZoomMode
     const isFirstImage = !previousPath
@@ -43,7 +46,12 @@ watch(() => currentEntry.value?.path, (path, previousPath) => {
       viewerStore.preserveView()
     }
   }
+  imageStore.setCurrent(currentEntry.value)
 }, { immediate: true })
+
+watch(directoryError, (error) => {
+  if (error) void message.error(t('directory.openFailed'))
+})
 
 async function toggleFullscreen(force?: boolean) {
   const next = force ?? !viewerStore.isFullscreen
@@ -56,7 +64,7 @@ async function toggleFullscreen(force?: boolean) {
 }
 
 function handleKeydown(event: KeyboardEvent) {
-  if (isEditableTarget(event.target)) return
+  if (appStore.settingsVisible || isEditableTarget(event.target)) return
   const command = event.metaKey || event.ctrlKey
   if (command && event.key.toLowerCase() === 'o') {
     event.preventDefault()
@@ -68,6 +76,7 @@ function handleKeydown(event: KeyboardEvent) {
     appStore.openSettings()
     return
   }
+  if (command || event.altKey) return
   const actions: Record<string, () => void> = {
     ArrowLeft: directoryStore.selectPrevious,
     ArrowRight: directoryStore.selectNext,
