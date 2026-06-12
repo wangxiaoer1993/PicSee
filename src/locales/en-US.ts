@@ -1,6 +1,6 @@
 export default {
   app: { name: 'PicSee', subtitle: 'A lightweight image viewer' },
-  action: { openFile: 'Open File', openDirectory: 'Open Folder', previous: 'Previous', next: 'Next', settings: 'Settings', save: 'Save', cancel: 'Cancel', reset: 'Restore Defaults' },
+  action: { openFile: 'Open File', openDirectory: 'Open Folder', previous: 'Previous', next: 'Next', zoomIn: 'Zoom in', zoomOut: 'Zoom out', fitWindow: 'Fit', settings: 'Settings', save: 'Save', cancel: 'Cancel', reset: 'Restore Defaults' },
   placeholder: {
     directory: 'Folders',
     directoryEmpty: 'Images will appear here after you open a folder.',
@@ -9,6 +9,7 @@ export default {
     thumbnail: 'Thumbnail',
     statusReady: 'Ready',
     noImage: 'No image opened',
+    imageError: 'The image could not be loaded.',
   },
   status: { fileName: 'File', index: 'Index', resolution: 'Resolution', zoom: 'Zoom', fileSize: 'File size' },
   settings: {

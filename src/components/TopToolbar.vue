@@ -2,9 +2,15 @@
 import { useI18n } from 'vue-i18n'
 
 import { useAppStore } from '@/stores/app'
+import { useDirectoryStore } from '@/stores/directory'
+import { useSettingsStore } from '@/stores/settings'
+import { useViewerStore } from '@/stores/viewer'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const directoryStore = useDirectoryStore()
+const settingsStore = useSettingsStore()
+const viewerStore = useViewerStore()
 </script>
 
 <template>
@@ -17,11 +23,17 @@ const appStore = useAppStore()
       </div>
     </div>
     <div class="top-toolbar__actions">
-      <a-button>{{ t('action.openFile') }}</a-button>
-      <a-button>{{ t('action.openDirectory') }}</a-button>
+      <a-button @click="directoryStore.openImageFile">{{ t('action.openFile') }}</a-button>
+      <a-button :loading="directoryStore.loading" @click="directoryStore.openDirectory">{{ t('action.openDirectory') }}</a-button>
       <a-button-group>
-        <a-button :aria-label="t('action.previous')">{{ t('action.previous') }}</a-button>
-        <a-button :aria-label="t('action.next')">{{ t('action.next') }}</a-button>
+        <a-button :aria-label="t('action.previous')" :disabled="!directoryStore.hasPrevious" @click="directoryStore.selectPrevious">{{ t('action.previous') }}</a-button>
+        <a-button :aria-label="t('action.next')" :disabled="!directoryStore.hasNext" @click="directoryStore.selectNext">{{ t('action.next') }}</a-button>
+      </a-button-group>
+      <a-button-group>
+        <a-button :aria-label="t('action.zoomOut')" @click="viewerStore.zoomOut(settingsStore.settings.viewer.zoomStep)">−</a-button>
+        <a-button @click="viewerStore.applyDisplayMode('fit-window')">{{ t('action.fitWindow') }}</a-button>
+        <a-button @click="viewerStore.applyDisplayMode('actual-size')">100%</a-button>
+        <a-button :aria-label="t('action.zoomIn')" @click="viewerStore.zoomIn(settingsStore.settings.viewer.zoomStep)">+</a-button>
       </a-button-group>
       <a-button type="primary" @click="appStore.openSettings">{{ t('action.settings') }}</a-button>
     </div>

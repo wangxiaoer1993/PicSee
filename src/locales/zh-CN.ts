@@ -1,6 +1,6 @@
 export default {
   app: { name: 'PicSee', subtitle: '轻快的图片查看器' },
-  action: { openFile: '打开文件', openDirectory: '打开目录', previous: '上一张', next: '下一张', settings: '设置', save: '保存', cancel: '取消', reset: '恢复默认值' },
+  action: { openFile: '打开文件', openDirectory: '打开目录', previous: '上一张', next: '下一张', zoomIn: '放大', zoomOut: '缩小', fitWindow: '适应', settings: '设置', save: '保存', cancel: '取消', reset: '恢复默认值' },
   placeholder: {
     directory: '目录',
     directoryEmpty: '打开一个目录后，图片文件会显示在这里。',
@@ -9,6 +9,7 @@ export default {
     thumbnail: '缩略图',
     statusReady: '就绪',
     noImage: '未打开图片',
+    imageError: '图片加载失败。',
   },
   status: { fileName: '文件名', index: '序号', resolution: '分辨率', zoom: '缩放比', fileSize: '文件大小' },
   settings: {
