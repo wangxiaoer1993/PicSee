@@ -84,6 +84,8 @@ export default {
     tileConcurrency: 'Tile read concurrency',
     decodeConcurrency: 'Image decode concurrency',
     thumbnailConcurrency: 'Thumbnail generation concurrency',
+    cpuThreads: 'CPU threads',
+    cpuThreadsHint: 'Recommended {recommended}, max {max} on this machine (parallel decode for large-image preview/tiles; too high saturates CPU)',
     preloadNormalCount: 'Normal image preload count',
     preloadLargePreviewCount: 'Large preview preload count',
     showThumbnailBar: 'Show thumbnail bar',

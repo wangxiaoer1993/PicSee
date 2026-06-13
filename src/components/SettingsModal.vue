@@ -21,6 +21,12 @@ watch(
   },
 )
 
+const maxThreads = typeof navigator !== 'undefined' && navigator.hardwareConcurrency
+  ? navigator.hardwareConcurrency
+  : 16
+const recommendedThreads = Math.min(8, maxThreads)
+const cpuThreadsHint = computed(() => t('settings.cpuThreadsHint', { recommended: recommendedThreads, max: maxThreads }))
+
 const languageOptions = computed(() => [
   { value: 'system', label: t('option.system') },
   { value: 'zh-CN', label: t('option.zhCN') },
@@ -161,6 +167,9 @@ function handleCancel() {
 
       <a-tab-pane key="performance" :tab="t('settings.group.performance')">
         <a-form layout="vertical">
+          <a-form-item :label="t('settings.cpuThreads')" :extra="cpuThreadsHint">
+            <a-input-number v-model:value="draft.performance.cpuThreads" :min="1" :max="maxThreads" />
+          </a-form-item>
           <div class="settings-grid">
             <a-form-item :label="t('settings.tileConcurrency')"><a-input-number v-model:value="draft.performance.tileConcurrency" :min="1" /></a-form-item>
             <a-form-item :label="t('settings.decodeConcurrency')"><a-input-number v-model:value="draft.performance.decodeConcurrency" :min="1" /></a-form-item>

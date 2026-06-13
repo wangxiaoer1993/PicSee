@@ -189,6 +189,8 @@ pub struct PerformanceSettings {
     pub decode_concurrency: u32,
     /// 缩略图生成并发数。
     pub thumbnail_concurrency: u32,
+    /// CPU 解码线程数（大图预览/瓦片/缩略图并行解码用）。
+    pub cpu_threads: u32,
     /// 普通图片预加载数量。
     pub preload_normal_count: u32,
     /// 大图预览预加载数量。
@@ -273,6 +275,7 @@ impl Default for PerformanceSettings {
             tile_concurrency: 4,
             decode_concurrency: 2,
             thumbnail_concurrency: 4,
+            cpu_threads: 8,
             preload_normal_count: 2,
             preload_large_preview_count: 1,
         }

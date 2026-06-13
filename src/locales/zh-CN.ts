@@ -84,6 +84,8 @@ export default {
     tileConcurrency: 'Tile 读取并发',
     decodeConcurrency: '图片解码并发',
     thumbnailConcurrency: '缩略图生成并发',
+    cpuThreads: 'CPU 线程数',
+    cpuThreadsHint: '推荐 {recommended}，本机最多 {max}（用于大图预览/瓦片并行解码，过高会占满 CPU）',
     preloadNormalCount: '普通图片预加载数量',
     preloadLargePreviewCount: '大图 Preview 预加载数量',
     showThumbnailBar: '显示缩略图栏',

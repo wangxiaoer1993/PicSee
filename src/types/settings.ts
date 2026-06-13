@@ -42,6 +42,8 @@ export interface AppSettings {
     tileConcurrency: number
     decodeConcurrency: number
     thumbnailConcurrency: number
+    /** CPU 解码线程数（大图预览/瓦片/缩略图并行解码用）。 */
+    cpuThreads: number
     preloadNormalCount: number
     preloadLargePreviewCount: number
   }

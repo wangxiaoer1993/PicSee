@@ -38,6 +38,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     tileConcurrency: 4,
     decodeConcurrency: 2,
     thumbnailConcurrency: 4,
+    cpuThreads: 8,
     preloadNormalCount: 2,
     preloadLargePreviewCount: 1,
   },

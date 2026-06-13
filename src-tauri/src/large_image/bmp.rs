@@ -246,6 +246,102 @@ impl BmpReader {
 
         Ok(output)
     }
+
+    /// `read_region` 的并行版本：按目标行分块到多个线程，各线程独立打开文件读取。
+    ///
+    /// 用于大图预览生成（目标高度大时显著提速）。内存安全：每线程仅持有少量行缓冲，
+    /// 输出缓冲按行不重叠地分给各线程写入，不引入额外常驻内存。
+    pub fn read_region_parallel(
+        &self,
+        rect: Rect,
+        target_width: u32,
+        target_height: u32,
+        threads: u32,
+    ) -> Result<Vec<u8>, LargeImageError> {
+        let img_w = self.info.width;
+        let img_h = self.info.height;
+
+        let src_x = rect.x.min(img_w);
+        let src_y = rect.y.min(img_h);
+        let src_x2 = (rect.x.saturating_add(rect.width)).min(img_w);
+        let src_y2 = (rect.y.saturating_add(rect.height)).min(img_h);
+        let src_w = src_x2.saturating_sub(src_x);
+        let src_h = src_y2.saturating_sub(src_y);
+
+        if src_w == 0 || src_h == 0 || target_width == 0 || target_height == 0 {
+            return Ok(vec![0u8; target_width as usize * target_height as usize * 4]);
+        }
+
+        let threads = threads.clamp(1, target_height);
+        if threads <= 1 {
+            return self.read_region(rect, target_width, target_height);
+        }
+
+        let bpp = self.info.pixel_format.bytes_per_pixel() as usize;
+        let row_bytes_out = target_width as usize * 4;
+        let mut output = vec![0u8; row_bytes_out * target_height as usize];
+        let band_rows = (target_height as usize).div_ceil(threads as usize);
+
+        std::thread::scope(|scope| -> Result<(), LargeImageError> {
+            let mut handles = Vec::new();
+            for (band_index, band) in output.chunks_mut(band_rows * row_bytes_out).enumerate() {
+                let base_ty = band_index * band_rows;
+                let info = &self.info;
+                let path = &self.path;
+                handles.push(scope.spawn(move || -> Result<(), LargeImageError> {
+                    let file = File::open(path)
+                        .map_err(|e| LargeImageError::io(format!("打开 BMP 文件失败: {e}")))?;
+                    let mut reader = BufReader::new(file);
+                    let rows_in_band = band.len() / row_bytes_out;
+                    for j in 0..rows_in_band {
+                        let ty = (base_ty + j) as u32;
+                        let src_row = src_y + nearest_source_index(ty, src_h, target_height);
+                        let row_offset = info.row_file_offset(src_row);
+                        let col_offset = src_x as u64 * bpp as u64;
+                        let row_bytes_needed = src_w as usize * bpp;
+
+                        reader
+                            .seek(SeekFrom::Start(row_offset + col_offset))
+                            .map_err(|e| LargeImageError::io(format!("seek 失败: {e}")))?;
+                        let mut row_buf = vec![0u8; row_bytes_needed];
+                        reader
+                            .read_exact(&mut row_buf)
+                            .map_err(|e| LargeImageError::decode(format!("读取行数据失败: {e}")))?;
+
+                        let out_row = &mut band[j * row_bytes_out..(j + 1) * row_bytes_out];
+                        for tx in 0..target_width {
+                            let src_col = nearest_source_index(tx, src_w, target_width);
+                            let src_off = src_col as usize * bpp;
+                            let out_off = tx as usize * 4;
+                            match info.pixel_format {
+                                PixelFormat::Bgr24 => {
+                                    out_row[out_off] = row_buf[src_off + 2];
+                                    out_row[out_off + 1] = row_buf[src_off + 1];
+                                    out_row[out_off + 2] = row_buf[src_off];
+                                    out_row[out_off + 3] = 255;
+                                }
+                                PixelFormat::Bgra32 => {
+                                    out_row[out_off] = row_buf[src_off + 2];
+                                    out_row[out_off + 1] = row_buf[src_off + 1];
+                                    out_row[out_off + 2] = row_buf[src_off];
+                                    out_row[out_off + 3] = row_buf[src_off + 3];
+                                }
+                            }
+                        }
+                    }
+                    Ok(())
+                }));
+            }
+            for handle in handles {
+                handle
+                    .join()
+                    .map_err(|_| LargeImageError::io("解码线程 panic".to_string()))??;
+            }
+            Ok(())
+        })?;
+
+        Ok(output)
+    }
 }
 
 // ─────────────────────────── 测试 ───────────────────────────
@@ -527,6 +623,21 @@ mod tests {
         let (r1, _, _, _) = pixel_at(&rgba, 1, 0, 2);
         assert_eq!(r0, 0);
         assert_eq!(r1, 2);
+    }
+
+    #[test]
+    fn test_read_region_parallel_matches_serial() {
+        // 并行结果必须与串行逐字节一致（全图 + 降采样 + 各种线程数）。
+        let f = write_temp_bmp(64, 48, true, false);
+        let reader = BmpReader::open(f.path()).unwrap();
+        let rect = full_rect(&reader.info);
+        for (tw, th) in [(64u32, 48u32), (20, 15), (7, 50), (1, 1)] {
+            let serial = reader.read_region(rect, tw, th).unwrap();
+            for threads in [2u32, 3, 8, 100] {
+                let par = reader.read_region_parallel(rect, tw, th, threads).unwrap();
+                assert_eq!(serial, par, "threads={threads} tw={tw} th={th}");
+            }
+        }
     }
 
     // ── 错误情况 ──

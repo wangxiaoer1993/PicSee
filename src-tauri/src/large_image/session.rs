@@ -199,6 +199,7 @@ pub fn encode_rgba_to_webp(
 pub fn generate_bmp_preview(
     path: &Path,
     preview_max_size: u32,
+    threads: u32,
 ) -> Result<Vec<u8>, LargeImageError> {
     let reader = BmpReader::open(path)?;
     let (pw, ph) = scale_to_fit_correct(reader.info.width, reader.info.height, preview_max_size);
@@ -208,7 +209,7 @@ pub fn generate_bmp_preview(
         width: reader.info.width,
         height: reader.info.height,
     };
-    let rgba = reader.read_region(rect, pw, ph)?;
+    let rgba = reader.read_region_parallel(rect, pw, ph, threads)?;
     encode_rgba_to_webp(&rgba, pw, ph, 80.0)
 }
 
@@ -352,6 +353,13 @@ pub async fn open_large_image(
 
     let tile_size = settings.large_image.tile_size as u32;
     let preview_max_size = settings.large_image.preview_max_size as u32;
+    // CPU 解码线程数：用户设置值 clamp 到 [1, 本机逻辑核]，避免在小核机器上过度订阅。
+    let cpu_threads = settings.performance.cpu_threads.clamp(
+        1,
+        std::thread::available_parallelism()
+            .map(|n| n.get() as u32)
+            .unwrap_or(8),
+    );
     let system_decode_dir = app
         .path()
         .app_cache_dir()
@@ -410,7 +418,7 @@ pub async fn open_large_image(
             };
 
             let preview = if ext == "bmp" {
-                generate_bmp_preview(&path_clone, preview_max_size)?
+                generate_bmp_preview(&path_clone, preview_max_size, cpu_threads)?
             } else {
                 generate_generic_preview(&path_clone, preview_max_size)?
             };
@@ -703,7 +711,7 @@ mod tests {
         f.flush().unwrap();
 
         let start = std::time::Instant::now();
-        let preview = generate_bmp_preview(f.path(), 4096).unwrap();
+        let preview = generate_bmp_preview(f.path(), 4096, 4).unwrap();
         let preview_ms = start.elapsed().as_millis();
         println!(
             "Preview 生成耗时: {preview_ms}ms，大小: {}KB",
@@ -727,7 +735,7 @@ mod tests {
 
         let reader = BmpReader::open(&path).unwrap();
         let preview_start = std::time::Instant::now();
-        let preview = generate_bmp_preview(&path, 4096).unwrap();
+        let preview = generate_bmp_preview(&path, 4096, 4).unwrap();
         let preview_ms = preview_start.elapsed().as_millis();
 
         let tile_start = std::time::Instant::now();
