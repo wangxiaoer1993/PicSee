@@ -352,6 +352,11 @@ pub async fn open_large_image(
 
     let tile_size = settings.large_image.tile_size as u32;
     let preview_max_size = settings.large_image.preview_max_size as u32;
+    let system_decode_dir = app
+        .path()
+        .app_cache_dir()
+        .ok()
+        .map(|directory| directory.join("system-decode"));
 
     let path_buf = std::path::PathBuf::from(&path);
     let ext = path_buf
@@ -371,8 +376,11 @@ pub async fn open_large_image(
                 let info = BmpInfo::from_file(&path_clone)?;
                 (info.width, info.height, true, false)
             } else if extended_formats::is_system_decoded(&path_clone) {
-                let decoded = extended_formats::decode_system_image(&path_clone)
-                    .map_err(LargeImageError::system_decode)?;
+                let decoded = extended_formats::decode_system_image_in(
+                    &path_clone,
+                    system_decode_dir.as_deref(),
+                )
+                .map_err(LargeImageError::from_system_decode)?;
                 let (w, h) = (decoded.width(), decoded.height());
                 let preview_limit = if extended_formats::is_tiff(&path_clone)
                     && w as u64 * (h as u64) < settings.large_image.pixel_threshold

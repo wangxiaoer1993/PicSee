@@ -49,6 +49,7 @@ export interface ImageProbe {
   loadMode: LoadMode
   tileable: boolean
   rawPreview: boolean
+  canFallbackToNormal: boolean
 }
 
 /** open_large_image command 返回值。 */

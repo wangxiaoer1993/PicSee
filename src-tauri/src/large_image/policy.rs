@@ -31,6 +31,7 @@ pub struct ImageProbe {
     pub load_mode: LoadMode,
     pub tileable: bool,
     pub raw_preview: bool,
+    pub can_fallback_to_normal: bool,
 }
 
 /// 判断图像是否为大图。
@@ -107,12 +108,15 @@ pub fn probe_image_file(
         .unwrap_or("")
         .to_lowercase();
 
-    let (width, height, format, tileable, raw_preview) = if ext == "bmp" {
+    let (width, height, format, tileable, raw_preview) = if ext == "svg" {
+        // SVG 由 WebView 直接显示；自然尺寸在前端 img load 后确定。
+        (0, 0, "svg".to_string(), false, false)
+    } else if ext == "bmp" {
         let info = super::bmp::BmpInfo::from_file(path)?;
         (info.width, info.height, "bmp".to_string(), true, false)
     } else if extended_formats::is_system_decoded(path) {
-        let (w, h) =
-            extended_formats::probe_system_image(path).map_err(LargeImageError::system_decode)?;
+        let (w, h) = extended_formats::probe_system_image(path)
+            .map_err(LargeImageError::from_system_decode)?;
         (w, h, ext.clone(), false, extended_formats::is_raw(path))
     } else {
         let reader = image::ImageReader::open(path)
@@ -145,6 +149,7 @@ pub fn probe_image_file(
         load_mode,
         tileable,
         raw_preview,
+        can_fallback_to_normal: !extended_formats::is_system_decoded(path),
     })
 }
 
@@ -373,5 +378,18 @@ mod tests {
         assert_eq!(probe.load_mode, LoadMode::LargeCandidate);
         assert!(!probe.tileable);
         assert!(probe.raw_preview);
+        assert!(!probe.can_fallback_to_normal);
+    }
+
+    #[test]
+    fn test_probe_svg_is_normal_without_decoder_error() {
+        let mut svg = NamedTempFile::with_suffix(".svg").unwrap();
+        svg.write_all(br#"<svg xmlns="http://www.w3.org/2000/svg"/>"#)
+            .unwrap();
+        let probe =
+            probe_image_file(svg.path(), &default_settings()).expect("SVG 应直接走普通路径");
+        assert_eq!(probe.load_mode, LoadMode::Normal);
+        assert_eq!(probe.format, "svg");
+        assert!(probe.can_fallback_to_normal);
     }
 }

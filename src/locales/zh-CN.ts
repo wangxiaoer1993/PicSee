@@ -45,6 +45,7 @@ export default {
       DECODE_ERROR: '大图解码失败',
       ENCODE_ERROR: '大图预览编码失败',
       SYSTEM_DECODE_ERROR: 'macOS 系统无法解码此 TIFF、HEIC 或 RAW 文件',
+      IMAGE_TOO_LARGE: '图片尺寸超过安全解码上限',
     },
   },
   settings: {

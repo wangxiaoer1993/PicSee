@@ -134,7 +134,7 @@ pub async fn get_thumbnail(
     })?;
 
     let file_size = metadata.len();
-    if file_size > MAX_FILE_BYTES && !extended_formats::is_system_decoded(&file_path) {
+    if file_size > MAX_FILE_BYTES {
         return Err(ThumbnailError::new(
             "FILE_TOO_LARGE",
             "File exceeds 100 MB; thumbnail skipped",
@@ -333,8 +333,19 @@ pub fn generate_thumbnail(
         .unwrap_or("")
         .to_ascii_lowercase();
 
-    // M1: read image dimensions from header before full decode; reject oversized images early.
-    if !extended_formats::is_system_decoded(path) {
+    // 解码前仅读 header，避免系统格式和普通格式因异常尺寸耗尽内存。
+    if extended_formats::is_system_decoded(path) {
+        let (w, h) = extended_formats::probe_system_image(path).map_err(|error| {
+            if error.starts_with("IMAGE_TOO_LARGE:") {
+                GenError::ImageTooLarge
+            } else {
+                GenError::DecodeFailed(error)
+            }
+        })?;
+        if w > MAX_SIDE_PIXELS || h > MAX_SIDE_PIXELS {
+            return Err(GenError::ImageTooLarge);
+        }
+    } else {
         let reader = ImageReader::open(path)
             .map_err(|e| GenError::IoFailed(format!("Failed to open image file: {e}")))?
             .with_guessed_format()
@@ -356,7 +367,10 @@ pub fn generate_thumbnail(
     };
 
     // Decode image.
-    let img = decode_image(&raw, &ext, path)
+    let system_decode_dir = cache_dir
+        .parent()
+        .map(|directory| directory.join("system-decode"));
+    let img = decode_image_in(&raw, &ext, path, system_decode_dir.as_deref())
         .map_err(|e| GenError::DecodeFailed(format!("Failed to decode image: {e}")))?;
 
     // Resize to fit within size×size.
@@ -383,8 +397,17 @@ pub fn generate_thumbnail(
 
 /// Decode image; for JPEG/WebP/PNG apply EXIF orientation when available.
 pub fn decode_image(raw: &[u8], ext: &str, path: &Path) -> Result<DynamicImage, String> {
+    decode_image_in(raw, ext, path, None)
+}
+
+fn decode_image_in(
+    raw: &[u8],
+    ext: &str,
+    path: &Path,
+    system_decode_dir: Option<&Path>,
+) -> Result<DynamicImage, String> {
     if extended_formats::needs_colorsync_output(path) {
-        return extended_formats::decode_system_image(path);
+        return extended_formats::decode_system_image_in(path, system_decode_dir);
     }
     // GIF: take only the first frame (image crate default).
     if ext == "gif" {
@@ -511,6 +534,14 @@ mod tests {
     }
 
     #[test]
+    fn test_jpeg_decode_uses_memory_not_sips_path() {
+        let jpeg = make_jpeg_bytes(8, 6);
+        let decoded = decode_image(&jpeg, "jpg", Path::new("/nonexistent/plain.jpg"))
+            .expect("JPEG 应直接从内存由 image-rs 解码");
+        assert_eq!(decoded.dimensions(), (8, 6));
+    }
+
+    #[test]
     fn test_generate_thumbnail_image_too_large() {
         // Create a real tiny JPEG and verify successful thumbnail generation.
         let cache_dir = tempfile::tempdir().expect("tempdir");
@@ -599,12 +630,10 @@ mod tests {
     #[ignore]
     fn benchmark_jpeg_decode() {
         let jpeg = make_jpeg_bytes(4000, 3000);
-        let mut file = NamedTempFile::with_suffix(".jpg").unwrap();
-        file.write_all(&jpeg).unwrap();
         let start = std::time::Instant::now();
-        let decoded = decode_image(&jpeg, "jpg", file.path()).unwrap();
+        let decoded = decode_image(&jpeg, "jpg", Path::new("benchmark.jpg")).unwrap();
         println!(
-            "JPEG ImageIO/ColorSync decode {}×{}: {}ms",
+            "JPEG image-rs decode {}×{}: {}ms",
             decoded.width(),
             decoded.height(),
             start.elapsed().as_millis()

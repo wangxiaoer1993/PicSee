@@ -53,6 +53,18 @@ impl LargeImageError {
         Self::new("SYSTEM_DECODE_ERROR", msg)
     }
 
+    pub fn image_too_large(msg: impl Into<String>) -> Self {
+        Self::new("IMAGE_TOO_LARGE", msg)
+    }
+
+    pub fn from_system_decode(message: String) -> Self {
+        if message.starts_with("IMAGE_TOO_LARGE:") {
+            Self::image_too_large(message)
+        } else {
+            Self::system_decode(message)
+        }
+    }
+
     pub fn encode(msg: impl Into<String>) -> Self {
         Self::new("ENCODE_ERROR", msg)
     }

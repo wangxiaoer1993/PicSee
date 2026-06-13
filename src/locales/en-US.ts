@@ -45,6 +45,7 @@ export default {
       DECODE_ERROR: 'The large image could not be decoded',
       ENCODE_ERROR: 'The large-image preview could not be encoded',
       SYSTEM_DECODE_ERROR: 'macOS could not decode this TIFF, HEIC, or RAW file',
+      IMAGE_TOO_LARGE: 'The image exceeds the safe decode size limit',
     },
   },
   settings: {
