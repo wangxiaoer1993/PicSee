@@ -168,7 +168,7 @@ function handleCancel() {
       <a-tab-pane key="performance" :tab="t('settings.group.performance')">
         <a-form layout="vertical">
           <a-form-item :label="t('settings.cpuThreads')" :extra="cpuThreadsHint">
-            <a-input-number v-model:value="draft.performance.cpuThreads" :min="1" :max="maxThreads" />
+            <a-input-number v-model:value="draft.performance.cpuThreads" :min="1" />
           </a-form-item>
           <div class="settings-grid">
             <a-form-item :label="t('settings.tileConcurrency')"><a-input-number v-model:value="draft.performance.tileConcurrency" :min="1" /></a-form-item>

@@ -559,13 +559,9 @@ pub async fn open_large_image(
 
     let tile_size = settings.large_image.tile_size as u32;
     let preview_max_size = settings.large_image.preview_max_size as u32;
-    // CPU 解码线程数：用户设置值 clamp 到 [1, 本机逻辑核]，避免在小核机器上过度订阅。
-    let cpu_threads = settings.performance.cpu_threads.clamp(
-        1,
-        std::thread::available_parallelism()
-            .map(|n| n.get() as u32)
-            .unwrap_or(8),
-    );
+    // CPU 解码线程数：尊重用户设置（设置项已取消上限），仅保留一个防御性硬顶 64，
+    // 防止病态线程数；read_region_parallel 内部还会按目标行数再收敛。
+    let cpu_threads = settings.performance.cpu_threads.clamp(1, 64);
     let system_decode_dir = app
         .path()
         .app_cache_dir()
