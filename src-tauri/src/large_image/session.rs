@@ -329,48 +329,61 @@ pub fn make_nav_preview(preview_rgba: &[u8], pw: u32, ph: u32) -> Result<Vec<u8>
     encode_rgba_to_webp(&small, nw, nh, 80.0)
 }
 
-/// 把 RGBA 缓冲写成 32-bit top-down BI_RGB BMP 临时文件，供 `BmpReader` 区域分块复用。
-/// 行式写入，内存只多一个行缓冲（不复制整图）。
-fn write_temp_bmp_raster(rgba: &[u8], w: u32, h: u32, dst: &Path) -> Result<(), LargeImageError> {
+/// 把 RGB(3) 或 RGBA(4) 缓冲写成 top-down BI_RGB BMP 临时文件，供 `BmpReader` 区域分块复用。
+/// 行式写入，内存只多一个行缓冲（不复制整图）。3 通道写 24-bit、4 通道写 32-bit，
+/// 24-bit 行按 4 字节对齐填充（与 BmpReader 的 row_stride 一致）。
+fn write_temp_bmp_raster(
+    src: &[u8],
+    channels: usize,
+    w: u32,
+    h: u32,
+    dst: &Path,
+) -> Result<(), LargeImageError> {
     use std::io::{BufWriter, Write};
+    debug_assert!(channels == 3 || channels == 4);
     if let Some(parent) = dst.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| LargeImageError::io(format!("创建栅格目录失败: {e}")))?;
     }
-    let row_bytes = w as usize * 4;
-    let pixel_bytes = row_bytes * h as usize;
-    let file_size = 54u32.saturating_add(pixel_bytes as u32);
+    let src_row = w as usize * channels;
+    // 目标 BMP 每行按 4 字节对齐（24-bit 需要填充，32-bit 天然对齐）。
+    let dst_row = (w as usize * channels + 3) & !3;
+    let file_size = 54u64 + dst_row as u64 * h as u64;
 
     let file =
         std::fs::File::create(dst).map_err(|e| LargeImageError::io(format!("创建栅格失败: {e}")))?;
     let mut writer = BufWriter::new(file);
 
-    // BITMAPINFOHEADER（54 字节）：32-bit、top-down（高度取负）、BI_RGB。
+    // BITMAPINFOHEADER（54 字节）：top-down（高度取负）、BI_RGB。
     let mut hdr = [0u8; 54];
     hdr[0] = b'B';
     hdr[1] = b'M';
-    hdr[2..6].copy_from_slice(&file_size.to_le_bytes());
+    hdr[2..6].copy_from_slice(&(file_size.min(u32::MAX as u64) as u32).to_le_bytes());
     hdr[10..14].copy_from_slice(&54u32.to_le_bytes());
     hdr[14..18].copy_from_slice(&40u32.to_le_bytes());
     hdr[18..22].copy_from_slice(&(w as i32).to_le_bytes());
     hdr[22..26].copy_from_slice(&(-(h as i32)).to_le_bytes());
     hdr[26..28].copy_from_slice(&1u16.to_le_bytes());
-    hdr[28..30].copy_from_slice(&32u16.to_le_bytes());
+    hdr[28..30].copy_from_slice(&((channels as u16) * 8).to_le_bytes());
     hdr[30..34].copy_from_slice(&0u32.to_le_bytes());
     writer
         .write_all(&hdr)
         .map_err(|e| LargeImageError::io(format!("写栅格头失败: {e}")))?;
 
-    // 像素：RGBA → BGRA，逐行写（top-down，行 0 在前）。
-    let mut row = vec![0u8; row_bytes];
+    // 像素：RGB(A) → BGR(A)，逐行写（top-down，行 0 在前），尾部补对齐填充。
+    let mut row = vec![0u8; dst_row];
     for y in 0..h as usize {
-        let src = &rgba[y * row_bytes..y * row_bytes + row_bytes];
+        let s0 = y * src_row;
+        let line = &src[s0..s0 + src_row];
         for x in 0..w as usize {
-            let s = x * 4;
-            row[s] = src[s + 2];
-            row[s + 1] = src[s + 1];
-            row[s + 2] = src[s];
-            row[s + 3] = src[s + 3];
+            let s = x * channels;
+            let d = x * channels;
+            row[d] = line[s + 2]; // B
+            row[d + 1] = line[s + 1]; // G
+            row[d + 2] = line[s]; // R
+            if channels == 4 {
+                row[d + 3] = line[s + 3]; // A
+            }
         }
         writer
             .write_all(&row)
@@ -588,8 +601,14 @@ pub async fn open_large_image(
             if let Some(dir) = large_raster_dir.as_deref() {
                 let seq = RASTER_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 let raster = dir.join(format!("raster-{seq}.bmp"));
-                let rgba = img.into_rgba8();
-                write_temp_bmp_raster(rgba.as_raw(), w, h, &raster)?;
+                // 无 alpha → 24-bit（省去 RGBA 转换与一份整图大小的缓冲，降低峰值内存）；有 alpha → 32-bit。
+                if img.color().has_alpha() {
+                    let rgba = img.into_rgba8();
+                    write_temp_bmp_raster(rgba.as_raw(), 4, w, h, &raster)?;
+                } else {
+                    let rgb = img.into_rgb8();
+                    write_temp_bmp_raster(rgb.as_raw(), 3, w, h, &raster)?;
+                }
                 return Ok(PreparedImage {
                     width: w,
                     height: h,
@@ -876,7 +895,7 @@ mod tests {
             rgba[i * 4 + 3] = 255;
         }
         let f = NamedTempFile::with_suffix(".bmp").unwrap();
-        write_temp_bmp_raster(&rgba, w, h, f.path()).unwrap();
+        write_temp_bmp_raster(&rgba, 4, w, h, f.path()).unwrap();
 
         let reader = BmpReader::open(f.path()).unwrap();
         assert_eq!(reader.info.width, w);
@@ -885,6 +904,32 @@ mod tests {
             .read_region(Rect { x: 0, y: 0, width: w, height: h }, w, h)
             .unwrap();
         assert_eq!(back, rgba, "栅格往返 RGBA 必须一致");
+    }
+
+    #[test]
+    fn test_temp_bmp_raster_roundtrip_24bit() {
+        // 写 RGB(3 通道) → 24-bit BMP（行需 4 字节对齐，宽 5 触发填充）→ BmpReader 读回，
+        // RGB 一致、alpha 应为 255。
+        use crate::large_image::bmp::{BmpReader, Rect};
+        let (w, h) = (5u32, 3u32);
+        let mut rgb = vec![0u8; (w * h * 3) as usize];
+        for i in 0..(w * h) as usize {
+            rgb[i * 3] = (i * 9) as u8;
+            rgb[i * 3 + 1] = (i * 9 + 1) as u8;
+            rgb[i * 3 + 2] = (i * 9 + 2) as u8;
+        }
+        let f = NamedTempFile::with_suffix(".bmp").unwrap();
+        write_temp_bmp_raster(&rgb, 3, w, h, f.path()).unwrap();
+
+        let reader = BmpReader::open(f.path()).unwrap();
+        assert_eq!((reader.info.width, reader.info.height), (w, h));
+        let back = reader
+            .read_region(Rect { x: 0, y: 0, width: w, height: h }, w, h)
+            .unwrap();
+        for i in 0..(w * h) as usize {
+            assert_eq!(&back[i * 4..i * 4 + 3], &rgb[i * 3..i * 3 + 3], "RGB 不一致 @{i}");
+            assert_eq!(back[i * 4 + 3], 255, "alpha 应为 255 @{i}");
+        }
     }
 
     // ── 基准测试（#[ignore]）──
